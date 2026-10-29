@@ -1,0 +1,11 @@
+const esbuild=require('/opt/npm-tools/node_modules/esbuild');const fs=require('fs');
+const src=fs.readFileSync('/home/claude/figma_renderer.js','utf8').replace('const SPEC = __SPEC__;','const SPEC = globalThis.__SPEC__X;').replace('const META = __META__;','const META = globalThis.__META__X;');
+const wrapped='globalThis.__r=async()=>{'+src+'\n};';
+const r=esbuild.transformSync(wrapped,{minify:true,target:'es2020',charset:'utf8'});
+let c=r.code.trim();
+const pre='globalThis.__r=async()=>{';
+if(!c.startsWith(pre)) throw new Error('unexpected start: '+c.slice(0,60));
+c=c.slice(pre.length); c=c.replace(/};?$/,'');
+c=c.replace('globalThis.__SPEC__X','__SPEC__').replace('globalThis.__META__X','__META__');
+fs.writeFileSync('/home/claude/figma_renderer.min.js',c);
+console.log(c.length,c.includes('__SPEC__'),c.includes('__META__'));

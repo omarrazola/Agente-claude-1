@@ -1,0 +1,96 @@
+---
+title: Cómo trabajan los agentes en el portal de diseño
+---
+flowchart TD
+
+  %% ---------- 1. El cliente pide ----------
+  subgraph S0["Vista Cliente · El cliente pide un diseño"]
+    direction TB
+    C1["El cliente escribe<br/>lo que necesita"]:::persona
+    C2["<b>Analista de brief</b><br/>Lee la petición, le pone una nota<br/>y pregunta lo que falta (máx. 3)"]:::agente
+    C3["El cliente responde<br/>y envía la petición"]:::persona
+    C4["Se crea la tarea en Jira"]:::auto
+    C1 --> C2 --> C3 --> C4
+  end
+
+  %% ---------- Paso 1 ----------
+  subgraph S1["Paso 1 · Brief"]
+    direction TB
+    D1["El diseñador lee la petición<br/>y los comentarios"]:::persona
+    D2{"¿Falta<br/>información?"}:::decision
+    D3["El diseñador pregunta<br/>al cliente en Jira"]:::persona
+    D1 --> D2
+    D2 -- Sí --> D3
+    D3 -. "el cliente responde" .-> D1
+  end
+
+  %% ---------- Paso 2 ----------
+  subgraph S2["Paso 2 · Agentes"]
+    direction TB
+    E0["El diseñador elige qué agentes<br/>participan y los lanza"]:::persona
+    E1["La tarea pasa a<br/><b>En curso</b> en Jira"]:::auto
+    E2["<b>Arquitecto UX</b><br/>Decide el recorrido del usuario<br/>y qué va en cada pantalla"]:::agente
+    E3["<b>UX Writer</b><br/>Escribe los textos:<br/>títulos, botones y avisos"]:::agente
+    E4["<b>UI Designer</b><br/>Dibuja las pantallas con<br/>el sistema de diseño Rumbo"]:::agente
+    E5["<b>QA</b><br/>Comprueba que cumple lo pedido<br/>y busca fallos"]:::agente
+    E0 --> E1 --> E2 --> E3 --> E4 --> E5
+  end
+
+  %% ---------- Paso 3 ----------
+  subgraph S3["Paso 3 · Revisión"]
+    direction TB
+    F1["El diseñador revisa pantallas,<br/>recorrido y prototipo"]:::persona
+    F2{"¿Hay que<br/>cambiar algo?"}:::decision
+    F3["<b>Agente de cambios</b><br/>Aplica lo que pide el diseñador<br/>y QA vuelve a revisar"]:::agente
+    F4["<b>Agente de notas</b><br/>Escribe una nota corta:<br/>qué se pidió y qué se hizo"]:::agente
+    F5["Las pantallas, el recorrido y la nota<br/>se dibujan solos en Figma"]:::auto
+    F1 --> F2
+    F2 -- Sí --> F3
+    F3 -. "nueva versión" .-> F1
+    F2 -- "No, enviar a Figma" --> F4 --> F5
+  end
+
+  %% ---------- Paso 4 ----------
+  subgraph S4["Paso 4 · Ajustes en Figma"]
+    direction TB
+    G1["<b>Resumen de pendientes</b><br/>Resume qué corregir en Figma<br/>y qué confirmar con el cliente"]:::agente
+    G2["El diseñador ajusta<br/>los detalles en Figma"]:::persona
+    G1 --> G2
+  end
+
+  %% ---------- Paso 5 ----------
+  subgraph S5["Paso 5 · Entrega a PM"]
+    direction TB
+    H1["El mensaje para PM<br/>se prepara solo"]:::auto
+    H2["El diseñador lo revisa,<br/>lo edita si quiere y lo envía"]:::persona
+    H3["Comentario en Jira avisando a PM<br/>y la tarea pasa a <b>To Do PM</b>"]:::auto
+    H1 --> H2 --> H3
+  end
+
+  C4 --> D1
+  D2 -- "No, el brief está listo" --> E0
+  E5 --> F1
+  F5 --> G1
+  G2 -- "He terminado en Figma" --> H1
+
+  %% ---------- Leyenda ----------
+  subgraph L["Leyenda"]
+    direction LR
+    L1["Persona"]:::persona
+    L2["Agente de IA"]:::agente
+    L3["Pasa solo,<br/>sin IA"]:::auto
+    L4{"Decisión"}:::decision
+  end
+  H3 ~~~ L
+
+  classDef persona fill:#FFFFFF,stroke:#1F1F1F,stroke-width:1.5px,color:#111
+  classDef agente fill:#EFE6FE,stroke:#8A38F5,stroke-width:2px,color:#2A0F57
+  classDef auto fill:#E6F4EC,stroke:#2C7A4B,stroke-width:1.5px,color:#123B23
+  classDef decision fill:#FFF4CC,stroke:#C79A00,stroke-width:1.5px,color:#3D2E00
+  style S0 fill:#FAFAFA,stroke:#BDBDBD
+  style S1 fill:#FAFAFA,stroke:#BDBDBD
+  style S2 fill:#FAFAFA,stroke:#BDBDBD
+  style S3 fill:#FAFAFA,stroke:#BDBDBD
+  style S4 fill:#FAFAFA,stroke:#BDBDBD
+  style S5 fill:#FAFAFA,stroke:#BDBDBD
+  style L fill:#FFFFFF,stroke:#DDDDDD,stroke-dasharray:4 4

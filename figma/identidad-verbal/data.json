@@ -1,0 +1,48 @@
+{
+ "title":"Identidad verbal",
+ "intro":"Cómo habla Rumbo en la app. Úsalo al escribir cualquier texto de interfaz: botones, títulos, avisos, errores y notificaciones.",
+ "esencia":"Rumbo habla como un buen conductor de confianza: claro, cercano y tranquilo. Te dice lo que necesitas saber, cuando lo necesitas, y te deja seguir con tu viaje.",
+ "rasgos":[
+  {"n":"Claro","si":"Una idea por frase. Palabras de todos los días.","no":"Confuso ni técnico.","ok":"Tu conductor llega en 4 min","ko":"ETA estimado del partner: 240 s"},
+  {"n":"Cercano","si":"Tuteamos y hablamos como una persona.","no":"Coloquial ni gracioso a destiempo.","ok":"¿A dónde vas?","ko":"¡Ey, crack! ¿Dónde te llevamos? 🚕"},
+  {"n":"Tranquilo","si":"Damos seguridad, sobre todo cuando algo falla.","no":"Alarmista ni culpabilizador.","ok":"No hemos podido cobrar la propina. Reinténtalo o cambia de tarjeta.","ko":"¡ERROR! Tu pago ha sido rechazado."},
+  {"n":"Directo","si":"Vamos al grano y decimos qué hacer.","no":"Seco ni robótico.","ok":"Confirmar Confort","ko":"Aceptar"}
+ ],
+ "tono":[
+  {"m":"Pedir un viaje","t":"Ágil","d":"Lo justo para decidir: precio, tiempo y tipo de vehículo.","e":"Rumbo X · 4 · 11:55 · 6 min"},
+  {"m":"Esperando al conductor","t":"Tranquilizador","d":"Quién viene, cuándo y cómo reconocerlo.","e":"Carlos llega en 3 min · Toyota Corolla blanco"},
+  {"m":"Durante el viaje","t":"Discreto","d":"Solo lo que cambia: llegada, paradas, ruta.","e":"Llegas a las 12:20"},
+  {"m":"Pagos y errores","t":"Sereno y útil","d":"Qué pasó y qué hacer, sin culpar.","e":"No se ha podido cobrar. Cambia de tarjeta para continuar."},
+  {"m":"Seguridad","t":"Serio","d":"Frases cortas y acción inmediata. Sin adornos.","e":"Comparte tu viaje con un contacto de confianza"},
+  {"m":"Promociones","t":"Animado, sin exagerar","d":"El beneficio primero, con condiciones claras.","e":"20 % en tu próximo viaje en Taxi hasta el domingo"}
+ ],
+ "reglas":[
+  ["Tuteo siempre","Habla a una persona: «Elige un viaje», no «Seleccione un servicio»."],
+  ["Frases cortas","Una idea por frase. Si necesitas dos, usa dos frases."],
+  ["Mayúscula solo al inicio","«Cancelar viaje», no «Cancelar Viaje». Los nombres de producto sí van con mayúscula: Rumbo X, Comfort."],
+  ["Botones con verbo","Verbo + objeto: «Confirmar Confort», «Cambiar tarjeta». Evita «Aceptar» u «OK»."],
+  ["Errores: qué pasó y qué hacer","Primero el problema en palabras sencillas, después la salida."],
+  ["Precios y tiempos con formato local","12,40 € · 4 min · 11:55 · 20 km. Sin decimales en tiempos."],
+  ["Sin emojis ni jerga interna","Nada de «partner», «ETA», «surge» o «driver»."],
+  ["Nunca solo color","Acompaña los estados con una palabra o un icono: «Enviada», «Pagado»."]
+ ],
+ "componentes":[
+  ["Botón","Verbo + objeto, máx. 3 palabras.","Confirmar Confort"],
+  ["Título de pantalla","Lo que la persona hace o ve aquí.","Planifica tu viaje"],
+  ["Banner","Qué pasa y, si hace falta, qué hacer.","Las tarifas son más altas de lo habitual"],
+  ["Snackbar","Confirmación breve en pasado.","Propina enviada"],
+  ["Diálogo","Pregunta clara + botones que repiten la acción.","¿Cancelar el viaje? · Cancelar viaje / Seguir esperando"],
+  ["Estado vacío","Qué no hay y cómo empezar.","Aún no tienes viajes. Pide el primero desde Inicio."]
+ ],
+ "glosario":[
+  ["Viaje","carrera, trayecto, servicio"],
+  ["Conductor","chófer, driver, partner"],
+  ["Recogida","pickup, punto de encuentro"],
+  ["Destino","drop-off, punto de bajada"],
+  ["Propina","tip, gratificación"],
+  ["Método de pago","forma de cobro, medio de pago"],
+  ["Actividad","historial, mis viajes"],
+  ["Programar","reservar más tarde, schedule"]
+ ],
+ "fuente":"Basado en las reglas de contenido del sistema Rumbo y en el tono definido por el UX Writer. Propuesta para revisar con el equipo."
+}

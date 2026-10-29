@@ -1,0 +1,25 @@
+{
+  "name": "antigravity-uber-portal",
+  "version": "1.0.0",
+  "description": "Portal «Diseño con IA · Rumbo» para Antigravity con Gemini 3.8 Flash, Firebase y Jira REST API",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "server": "node server/index.js",
+    "client": "vite client --config client/vite.config.js --host 0.0.0.0 --port 5173",
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"blue,green\" \"node server/index.js\" \"vite client --config client/vite.config.js --host 0.0.0.0 --port 5173\"",
+    "build": "vite build client",
+    "start": "NODE_ENV=production node server/index.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.31.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "firebase": "^11.1.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "vite": "^6.0.7"
+  }
+}

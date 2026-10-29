@@ -1,0 +1,12 @@
+{
+  "name": "Portal Rumbo - AI Design Bridge",
+  "id": "portal-rumbo-ai-bridge",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["*"],
+    "reasoning": "Permite la conexión local en tiempo real con el portal de diseño de IA en http://localhost:5173"
+  }
+}

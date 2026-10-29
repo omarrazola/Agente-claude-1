@@ -1,0 +1,1140 @@
+const SPEC = __SPEC__;
+const META = __META__;
+const DS = SPEC.dsLib || {};
+const SETS = DS.sets || {}, VARS = DS.vars || {}, TSTY = DS.text || {}, ICONS = DS.icons || {};
+const JK = "Plus Jakarta Sans";
+for (const s of ["Regular", "Medium", "SemiBold", "Bold"]) { try { await figma.loadFontAsync({ family: JK, style: s }); } catch (e) {} }
+for (const s of ["Bold", "Medium"]) { try { await figma.loadFontAsync({ family: "JetBrains Mono", style: s }); } catch (e) {} }
+for (const s of ["Regular", "Medium", "Semi Bold", "SemiBold", "Bold"]) { try { await figma.loadFontAsync({ family: "Inter", style: s }); } catch (e) {} }
+const W = SPEC.platform === "desktop" ? 1440 : 375;
+const H = SPEC.platform === "desktop" ? 1024 : 812;
+const MOBILE = W === 375;
+function hex(h) { h = String(h || "#000000").replace("#", ""); if (h.length === 3) h = h.split("").map(c => c + c).join(""); const n = parseInt(h.slice(0, 6), 16) || 0; return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255 }; }
+const FALL = {
+  "bg/primary": "#000000",
+  "bg/secondary": "#141414",
+  "bg/tertiary": "#1F1F1F",
+  "text/primary": "#FFFFFF",
+  "text/secondary": "#AFAFAF",
+  "text/tertiary": "#8A8A8A",
+  "border/default": "#2C2C2C",
+  "border/strong": "#3A3A3A",
+  "brand/primary": "#FFC800",
+  "brand/subtle": "#332800",
+  "icon/primary": "#FFFFFF",
+  "icon/secondary": "#AFAFAF",
+  "status/negative": "#FF6B5E",
+  "status/negative-bg": "#3A1411",
+  "status/positive": "#3DD47A",
+  "status/positive-bg": "#0F2A1A",
+  "status/warning": "#FFAA45",
+  "status/warning-bg": "#3A2405",
+  "status/info": "#6E9BFF",
+  "status/info-bg": "#0F1E40"
+};
+const _v = {};
+async function pv(name) {
+  const id = VARS[name];
+  if (id) { try { const v = _v[id] || (_v[id] = await figma.variables.getVariableByIdAsync(id)); if (v) return [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 0, g: 0, b: 0 } }, "color", v)]; } catch (e) {} }
+  return [{ type: "SOLID", color: hex(FALL[name] || "#FFFFFF") }];
+}
+function al(dir, props) {
+  const f = figma.createFrame();
+  f.layoutMode = dir === "HORIZONTAL" ? "HORIZONTAL" : "VERTICAL";
+  f.fills = [];
+  f.strokes = [];
+  if (props && typeof props === "object") {
+    for (const [k, v] of Object.entries(props)) {
+      try {
+        if (k === "itemSpacing" || k === "paddingLeft" || k === "paddingRight" || k === "paddingTop" || k === "paddingBottom" || k === "cornerRadius" || k === "counterAxisSpacing") {
+          f[k] = Number(v) || 0;
+        } else {
+          f[k] = v;
+        }
+      } catch (e) {}
+    }
+  }
+  return f;
+}
+async function txt(s, style, color) {
+  const t = figma.createText();
+  let ok = false;
+  if (TSTY[style]) { try { await t.setTextStyleIdAsync(TSTY[style]); ok = true; } catch (e) {} }
+  if (!ok) { t.fontName = { family: "Inter", style: /Heading|Display/.test(style) ? "Bold" : /Label/.test(style) ? "Semi Bold" : "Regular" }; t.fontSize = /Large/.test(style) ? 20 : 15; }
+  t.characters = String(s == null ? "" : s);
+  t.fills = await pv(color || "text/primary");
+  return t;
+}
+function fillW(parent, node) { parent.appendChild(node); try { node.layoutSizingHorizontal = "FILL"; } catch (e) {} if (node.type === "TEXT") node.textAutoResize = "HEIGHT"; return node; }
+/* ===== Componentes del sistema ===== */
+const _sets = {};
+const usedDs = new Set();
+const dsErrors = [];
+async function setOf(name) {
+  if (name in _sets) return _sets[name];
+  let s = null; try { s = SETS[name] ? await figma.getNodeByIdAsync(SETS[name]) : null; } catch (e) { s = null; }
+  return (_sets[name] = s);
+}
+async function inst(name, variant, props) {
+  const set = await setOf(name);
+  if (!set) throw new Error("falta el componente " + name);
+  let target = set.type === "COMPONENT_SET" ? set.defaultVariant : set;
+  if (set.type === "COMPONENT_SET" && variant) {
+    let best = null, bs = -1;
+    for (const c of set.children) { const vp = c.variantProperties || {}; let s = 0; for (const [k, v] of Object.entries(variant)) if (vp[k] === v) s++; if (s > bs) { bs = s; best = c; } }
+    target = best || target;
+  }
+  const i = target.createInstance();
+  if (props) setP(i, props);
+  usedDs.add(name);
+  return i;
+}
+function setP(i, props) {
+  const defs = i.componentProperties || {};
+  const out = {};
+  for (const [n, v] of Object.entries(props)) {
+    if (v === undefined || v === null) continue;
+    const k = Object.keys(defs).find(x => x.split("#")[0] === n);
+    if (!k) continue;
+    out[k] = defs[k].type === "TEXT" ? String(v) : v;
+  }
+  try { i.setProperties(out); } catch (e) { for (const [k, v] of Object.entries(out)) { try { i.setProperties({ [k]: v }); } catch (e2) {} } }
+}
+function child(i, name) { return i.findOne(n => n.name === name); }
+async function swapIcon(i, nodeName, icon) {
+  if (!icon || !ICONS[icon]) return;
+  try { const c = await figma.getNodeByIdAsync(ICONS[icon]); const n = i.findOne(x => x.type === "INSTANCE" && x.name === nodeName && x.parent && x.parent.name === "Leading") || i.findOne(x => x.type === "INSTANCE" && x.name === nodeName); if (c && n) n.swapComponent(c); } catch (e) {}
+}
+const ICONWORDS = [[/compart/i, "share"], [/hora|program|reserv|tiempo/i, "clock"], [/aeropuerto|vuelo|terminal/i, "location"], [/casa|hogar|home/i, "home"], [/trabajo|oficina/i, "grid"], [/pago|tarjeta|visa|cobro|efectivo/i, "card"], [/segur|emergencia|protecc/i, "shield"], [/llam|tel[eé]fono/i, "phone"], [/mensaje|chat/i, "message"], [/conductor|perfil|cuenta|usuario/i, "user"], [/coche|veh[ií]culo|viaje|taxi|confort|xl|eco/i, "car"], [/valor|estrella|calific/i, "star"], [/ayuda|info/i, "info"]];
+function iconFor(s, def) { s = String(s || ""); for (const [re, ic] of ICONWORDS) if (re.test(s)) return ic; return def || "location"; }
+const TONE = { info: "Info", accent: "Info", success: "Positive", positive: "Positive", warning: "Warning", error: "Negative", negative: "Negative" };
+const TAG = { gray: "Neutral", solid: "Brand", accent: "Info", info: "Info", positive: "Positive", success: "Positive", warning: "Warning", negative: "Negative", error: "Negative" };
+const BLEED = new Set(["list", "option", "check", "sectionheading", "tabs", "divider", "driver", "map", "sheetheader", "appbar"]);
+async function pane(parent) { const p = al("VERTICAL", { name: "Bloque", itemSpacing: 12, paddingLeft: 16, paddingRight: 16 }); fillW(parent, p); return p; }
+const LINKS = [], BACKS = [];
+
+// Native UI Fallback Builders cuando no están los componentes en el archivo
+async function drawNativeAppBar(parent, b) {
+  const r = al("HORIZONTAL", { name: "Navigation header", itemSpacing: 12, paddingLeft: 16, paddingRight: 16, counterAxisAlignItems: "CENTER" });
+  r.resize(W, 52);
+  fillW(parent, r);
+  if (b.left) {
+    const btn = al("HORIZONTAL", { name: "Leading", paddingLeft: 8, paddingRight: 8, paddingTop: 8, paddingBottom: 8, counterAxisAlignItems: "CENTER", primaryAxisAlignItems: "CENTER", cornerRadius: 99 });
+    const ic = await txt(b.left === "close" ? "✕" : "←", "Label/Large", "text/primary");
+    ic.fontSize = 20;
+    btn.appendChild(ic);
+    r.appendChild(btn);
+  }
+  const tit = await txt(b.title || "Pantalla", "Heading/Medium", "text/primary");
+  tit.fontSize = 18;
+  fillW(r, tit);
+  if (b.right) {
+    const rt = await txt(String(b.right), "Label/Medium", "text/secondary");
+    r.appendChild(rt);
+  }
+  return r;
+}
+
+async function drawNativeSheetHeader(parent, b) {
+  const sh = al("VERTICAL", { name: "Sheet header", itemSpacing: 8, paddingLeft: 16, paddingRight: 16, paddingTop: 12, paddingBottom: 8, cornerRadius: 16 });
+  sh.fills = [{ type: "SOLID", color: hex("#1F1F1F") }];
+  fillW(parent, sh);
+  const handleWrap = al("HORIZONTAL", { primaryAxisAlignItems: "CENTER", counterAxisAlignItems: "CENTER" });
+  fillW(sh, handleWrap);
+  const handle = figma.createFrame();
+  handle.name = "Handle";
+  handle.resize(36, 4);
+  handle.cornerRadius = 2;
+  handle.fills = [{ type: "SOLID", color: hex("#AFAFAF") }];
+  handleWrap.appendChild(handle);
+  
+  const row = al("HORIZONTAL", { itemSpacing: 8, counterAxisAlignItems: "CENTER" });
+  fillW(sh, row);
+  const col = al("VERTICAL", { itemSpacing: 2 });
+  fillW(row, col);
+  const tit = await txt(b.title || "", "Heading/Large", "text/primary");
+  tit.fontSize = 20;
+  fillW(col, tit);
+  if (b.subtitle) {
+    const sub = await txt(b.subtitle, "Body/Medium", "text/secondary");
+    sub.fontSize = 14;
+    fillW(col, sub);
+  }
+  if (b.close !== false) {
+    const cb = await txt("✕", "Label/Large", "text/secondary");
+    cb.fontSize = 18;
+    row.appendChild(cb);
+  }
+  return sh;
+}
+
+async function drawNativeBanner(parent, b) {
+  const toneMap = {
+    error: { bg: "#3A1411", border: "#FF6B5E", ic: "⚠", text: "#FFFFFF", icCol: "#FF6B5E" },
+    negative: { bg: "#3A1411", border: "#FF6B5E", ic: "⚠", text: "#FFFFFF", icCol: "#FF6B5E" },
+    warning: { bg: "#3A2405", border: "#FFAA45", ic: "⚠", text: "#FFFFFF", icCol: "#FFAA45" },
+    success: { bg: "#0F2A1A", border: "#3DD47A", ic: "✓", text: "#FFFFFF", icCol: "#3DD47A" },
+    positive: { bg: "#0F2A1A", border: "#3DD47A", ic: "✓", text: "#FFFFFF", icCol: "#3DD47A" },
+    info: { bg: "#0F1E40", border: "#6E9BFF", ic: "ℹ", text: "#FFFFFF", icCol: "#6E9BFF" }
+  };
+  const c = toneMap[b.tone] || toneMap.info;
+  const bn = al("HORIZONTAL", { name: "Banner", itemSpacing: 10, paddingLeft: 14, paddingRight: 14, paddingTop: 12, paddingBottom: 12, cornerRadius: 12, counterAxisAlignItems: "CENTER" });
+  bn.fills = [{ type: "SOLID", color: hex(c.bg) }];
+  bn.strokes = [{ type: "SOLID", color: hex(c.border) }];
+  bn.strokeWeight = 1;
+  fillW(parent, bn);
+  
+  const ic = await txt(c.ic, "Label/Large");
+  ic.fontSize = 16;
+  ic.fills = [{ type: "SOLID", color: hex(c.icCol) }];
+  bn.appendChild(ic);
+  
+  const col = al("VERTICAL", { itemSpacing: 2 });
+  fillW(bn, col);
+  if (b.title) {
+    const t = await txt(b.title, "Label/Large");
+    t.fontSize = 14;
+    t.fills = [{ type: "SOLID", color: hex(c.text) }];
+    fillW(col, t);
+  }
+  if (b.text) {
+    const m = await txt(b.text, "Body/Medium");
+    m.fontSize = 13;
+    m.fills = [{ type: "SOLID", color: hex(c.text) }];
+    fillW(col, m);
+  }
+  return bn;
+}
+
+async function drawNativeButton(parent, b, isHalf) {
+  const isSec = b.variant === "secondary";
+  const isDanger = b.variant === "danger";
+  const isGhost = b.variant === "ghost";
+  const btn = al("HORIZONTAL", {
+    name: "Button " + (b.label || ""),
+    cornerRadius: 99,
+    paddingLeft: isHalf ? 8 : 16,
+    paddingRight: isHalf ? 8 : 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    counterAxisAlignItems: "CENTER",
+    primaryAxisAlignItems: "CENTER"
+  });
+  const bw = isHalf ? 165 : W - 32;
+  btn.resize(bw, 48);
+  if (isGhost) {
+    btn.fills = [];
+  } else if (isSec) {
+    btn.fills = [{ type: "SOLID", color: hex("#1F1F1F") }];
+    btn.strokes = [{ type: "SOLID", color: hex("#2C2C2C") }];
+    btn.strokeWeight = 1;
+  } else if (isDanger) {
+    btn.fills = [{ type: "SOLID", color: hex("#FF6B5E") }];
+  } else {
+    btn.fills = [{ type: "SOLID", color: hex("#FFC800") }];
+  }
+  const t = await txt(b.label || "Botón", "Label/Large");
+  t.fontSize = isHalf ? 13 : 15;
+  t.fontName = { family: "Inter", style: "Semi Bold" };
+  t.fills = [{ type: "SOLID", color: hex(isGhost ? "#FFC800" : isSec ? "#FFFFFF" : isDanger ? "#000000" : "#000000") }];
+  t.textAlignHorizontal = "CENTER";
+  btn.appendChild(t);
+  fillW(parent, btn);
+  return btn;
+}
+
+async function drawNativeDock(parent, b) {
+  const isDouble = !!b.secondary;
+  const dk = al("VERTICAL", { name: "Button dock", itemSpacing: 10, paddingLeft: 16, paddingRight: 16, paddingTop: 14, paddingBottom: 20 });
+  dk.fills = [{ type: "SOLID", color: hex("#000000") }];
+  dk.strokes = [{ type: "SOLID", color: hex("#2C2C2C") }];
+  dk.strokeWeight = 1;
+  fillW(parent, dk);
+  
+  if (b.caption) {
+    const cap = await txt(b.caption, "Caption", "text/secondary");
+    cap.fontSize = 12;
+    fillW(dk, cap);
+  }
+
+  if (isDouble) {
+    const row = al("HORIZONTAL", { name: "Button row", itemSpacing: 12, counterAxisAlignItems: "CENTER" });
+    fillW(dk, row);
+    
+    // Left: Secondary button
+    const sBtn = await drawNativeButton(row, { label: b.secondary, variant: "secondary" }, true);
+    if (b.secondaryTo) {
+      LINKS.push({ node: sBtn, to: b.secondaryTo, label: b.secondary });
+    }
+    
+    // Right: Primary button
+    const pBtn = await drawNativeButton(row, { label: b.label, variant: "primary" }, true);
+    if (b.to) {
+      LINKS.push({ node: pBtn, to: b.to, label: b.label });
+    }
+  } else {
+    if (b.label) {
+      const pBtn = await drawNativeButton(dk, { label: b.label, variant: "primary" }, false);
+      if (b.to) {
+        LINKS.push({ node: pBtn, to: b.to, label: b.label });
+      }
+    }
+  }
+  return dk;
+}
+
+async function drawNativeOption(parent, b) {
+  const opt = al("HORIZONTAL", {
+    name: "Option " + (b.title || ""),
+    itemSpacing: 12,
+    paddingLeft: 16,
+    paddingRight: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    cornerRadius: 12,
+    counterAxisAlignItems: "CENTER"
+  });
+  opt.resize(W - 32, 68);
+  if (b.selected) {
+    opt.fills = [{ type: "SOLID", color: hex("#141414") }];
+    opt.strokes = [{ type: "SOLID", color: hex("#FFC800") }];
+    opt.strokeWeight = 2;
+  } else {
+    opt.fills = [{ type: "SOLID", color: hex("#1F1F1F") }];
+    opt.strokes = [{ type: "SOLID", color: hex("#2C2C2C") }];
+    opt.strokeWeight = 1;
+  }
+  fillW(parent, opt);
+  
+  const iconWrap = al("HORIZONTAL", { cornerRadius: 99, paddingLeft: 8, paddingRight: 8, paddingTop: 8, paddingBottom: 8, counterAxisAlignItems: "CENTER", primaryAxisAlignItems: "CENTER" });
+  iconWrap.fills = [{ type: "SOLID", color: hex("#2C2C2C") }];
+  iconWrap.resize(36, 36);
+  const icText = b.icon === "cash" ? "💵" : b.icon === "card" || /visa|master/i.test(b.title || "") ? "💳" : "🚗";
+  const icNode = await txt(icText, "Label/Large");
+  icNode.fontSize = 18;
+  iconWrap.appendChild(icNode);
+  opt.appendChild(iconWrap);
+  
+  const col = al("VERTICAL", { itemSpacing: 2 });
+  fillW(opt, col);
+  const tit = await txt(b.title || "", "Label/Large", "text/primary");
+  tit.fontSize = 15;
+  tit.fontName = { family: "Inter", style: "Semi Bold" };
+  fillW(col, tit);
+  
+  if (b.badge && b.badge.text) {
+    const sub = await txt(b.badge.text, "Caption");
+    sub.fontSize = 12;
+    sub.fontName = { family: "Inter", style: "Medium" };
+    sub.fills = [{ type: "SOLID", color: hex("#FF6B5E") }];
+    fillW(col, sub);
+  } else if (b.subtitle) {
+    const sub = await txt(b.subtitle, "Body/Medium", "text/secondary");
+    sub.fontSize = 13;
+    fillW(col, sub);
+  }
+  
+  if (b.price) {
+    const pr = await txt(b.price, "Label/Large", "text/primary");
+    pr.fontSize = 15;
+    opt.appendChild(pr);
+  }
+  
+  const radio = al("HORIZONTAL", { name: "Radio", counterAxisAlignItems: "CENTER", primaryAxisAlignItems: "CENTER" });
+  radio.resize(20, 20);
+  radio.cornerRadius = 10;
+  if (b.selected) {
+    radio.fills = [{ type: "SOLID", color: hex("#FFC800") }];
+    const dot = figma.createFrame();
+    dot.name = "Dot";
+    dot.resize(8, 8);
+    dot.cornerRadius = 4;
+    dot.fills = [{ type: "SOLID", color: hex("#000000") }];
+    radio.appendChild(dot);
+  } else {
+    radio.fills = [];
+    radio.strokes = [{ type: "SOLID", color: hex("#8A8A8A") }];
+    radio.strokeWeight = 2;
+  }
+  opt.appendChild(radio);
+  if (b.to) {
+    LINKS.push({ node: opt, to: b.to, label: b.title || "Opción" });
+  }
+  return opt;
+}
+
+async function drawNativeMap(parent, b) {
+  const mapFrame = al("VERTICAL", { name: "Mapa de ruta", primaryAxisAlignItems: "CENTER", counterAxisAlignItems: "CENTER" });
+  mapFrame.resize(W, 240);
+  mapFrame.fills = [{ type: "SOLID", color: hex("#141414") }];
+  mapFrame.clipsContent = true;
+  fillW(parent, mapFrame);
+  
+  const r1 = figma.createFrame(); r1.resize(W, 14); r1.fills = [{ type: "SOLID", color: hex("#2C2C2C") }]; mapFrame.appendChild(r1); r1.x = 0; r1.y = 80;
+  const r2 = figma.createFrame(); r2.resize(W, 18); r2.fills = [{ type: "SOLID", color: hex("#2C2C2C") }]; mapFrame.appendChild(r2); r2.x = 0; r2.y = 180;
+
+  const road = figma.createVector();
+  road.name = "Ruta";
+  await road.setVectorNetworkAsync({
+    vertices: [{ x: 40, y: 190 }, { x: 120, y: 150 }, { x: 220, y: 100 }, { x: 300, y: 50 }],
+    segments: [{ start: 0, end: 1 }, { start: 1, end: 2 }, { start: 2, end: 3 }]
+  });
+  road.strokes = [{ type: "SOLID", color: hex("#FFFFFF") }];
+  road.strokeWeight = 5;
+  road.strokeCap = "ROUND";
+  road.strokeJoin = "ROUND";
+  mapFrame.appendChild(road);
+  
+  const pin = al("HORIZONTAL", { primaryAxisAlignItems: "CENTER", counterAxisAlignItems: "CENTER" });
+  pin.resize(24, 24);
+  pin.cornerRadius = 12;
+  pin.fills = [{ type: "SOLID", color: hex("#FFC800") }];
+  const innerDot = figma.createFrame(); innerDot.resize(8, 8); innerDot.cornerRadius = 4; innerDot.fills = [{ type: "SOLID", color: hex("#000000") }];
+  pin.appendChild(innerDot);
+  mapFrame.appendChild(pin);
+  pin.x = 290; pin.y = 38;
+  
+  const pill = al("HORIZONTAL", { name: "ETA", itemSpacing: 6, paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, cornerRadius: 99 });
+  pill.fills = [{ type: "SOLID", color: hex("#FFFFFF") }];
+  pill.strokeWeight = 0;
+  const pillTxt = await txt("⏱ 3 min · Conductor cerca", "Label/Small");
+  pillTxt.fontSize = 12;
+  pillTxt.fills = [{ type: "SOLID", color: hex("#000000") }];
+  pill.appendChild(pillTxt);
+  mapFrame.appendChild(pill);
+  pill.x = 20; pill.y = 20;
+}
+
+async function drawNativeListItem(parent, it) {
+  const row = al("HORIZONTAL", { name: "List item", itemSpacing: 12, paddingLeft: 16, paddingRight: 16, paddingTop: 14, paddingBottom: 14, counterAxisAlignItems: "CENTER", cornerRadius: 12 });
+  row.fills = [{ type: "SOLID", color: hex("#1F1F1F") }];
+  row.strokes = [{ type: "SOLID", color: hex("#2C2C2C") }];
+  row.strokeWeight = 1;
+  fillW(parent, row);
+  
+  const ic = await txt(it.icon === "card" ? "💳" : it.icon === "location" ? "📍" : "＋", "Label/Large");
+  ic.fontSize = 16;
+  row.appendChild(ic);
+  
+  const col = al("VERTICAL", { itemSpacing: 2 });
+  fillW(row, col);
+  const tit = await txt(it.title || "", "Label/Large", "text/primary");
+  tit.fontSize = 15;
+  fillW(col, tit);
+  if (it.subtitle) {
+    const sub = await txt(it.subtitle, "Body/Medium", "text/secondary");
+    sub.fontSize = 13;
+    fillW(col, sub);
+  }
+  
+  const chev = await txt("›", "Label/Large", "text/secondary");
+  chev.fontSize = 18;
+  row.appendChild(chev);
+}
+
+async function dsBlock(parent, b) {
+  const k = b.t;
+  if (k === "appbar") {
+    try {
+      const ty = b.left === "back" ? "Back" : b.left === "close" ? "Close" : b.left === "menu" ? "Back" : "Large title";
+      const i = await inst("Navigation header", { Type: ty }, { Title: b.title || "", "Show trailing": false }); fillW(parent, i);
+      if (ty === "Large title" && !b.left) { const row = child(i, "Row"); if (row) row.visible = false; }
+    } catch (e) {
+      await drawNativeAppBar(parent, b);
+    }
+    return true;
+  }
+  if (k === "sheetheader") {
+    try {
+      fillW(parent, await inst("Sheet header", null, { Title: b.title || "", Subtitle: b.subtitle || "", "Show subtitle": !!b.subtitle, "Show close": b.close !== false }));
+    } catch (e) {
+      await drawNativeSheetHeader(parent, b);
+    }
+    return true;
+  }
+  if (k === "button") {
+    try {
+      const h = { primary: "Primary", secondary: "Secondary", ghost: "Tertiary", danger: "Destructive" }[b.variant || "primary"] || "Primary";
+      fillW(parent, await inst("Button", { Hierarchy: h, Size: "Large", State: b.disabled ? "Disabled" : "Default" }, { Label: b.label || "" }));
+    } catch (e) {
+      await drawNativeButton(parent, b);
+    }
+    return true;
+  }
+  if (k === "banner") {
+    try {
+      fillW(parent, await inst("Banner", { Type: TONE[b.tone] || "Info" }, { Title: b.title || "", "Show title": !!b.title, Message: b.text || "", Action: b.action || "", "Show action": !!b.action }));
+    } catch (e) {
+      await drawNativeBanner(parent, b);
+    }
+    return true;
+  }
+  if (k === "map" || (k === "image" && /mapa|map|ruta/i.test(b.label || ""))) {
+    try {
+      const ty = { explore: "Explore", route: "Route", approaching: "Approaching" }[b.kind || b.mode] || (/ruta|route|destino/i.test(b.label || "") ? "Route" : /conductor|llega|camino/i.test(b.label || "") ? "Approaching" : "Explore");
+      const i = await inst("Map", { Type: ty }, { "Show locate": true }); fillW(parent, i);
+      if (b.eta) { const e = child(i, "ETA"); if (e && e.type === "INSTANCE") setP(e, { Label: b.eta }); }
+      if (b.h) { try { i.resize(i.width, Math.max(200, Math.min(600, Number(b.h)))); } catch (e) {} }
+    } catch (e) {
+      await drawNativeMap(parent, b);
+    }
+    return true;
+  }
+  if (k === "option") {
+    try {
+      const desc = [b.subtitle, b.badge && b.badge.text].filter(Boolean).join(" · ");
+      const i = await inst("List item", { Type: "Option", Selected: b.selected ? "True" : "False" }, { Title: (b.title || "") + (b.capacity ? " · " + b.capacity : ""), Description: desc, "Show description": !!desc, Trailing: b.price || "", "Show trailing": !!b.price });
+      await swapIcon(i, "Icon", iconFor(b.icon || b.title, "car")); fillW(parent, i);
+    } catch (e) {
+      await drawNativeOption(parent, b);
+    }
+    return true;
+  }
+  if (k === "list") {
+    try {
+      for (const it of (b.items || [])) {
+        const nav = !it.trailing || it.trailing === "›" || it.chevron;
+        const i = await inst("List item", { Type: nav ? "Navigation" : "Info", Selected: "False" }, { Title: it.title || "", Description: it.subtitle || "", "Show description": !!it.subtitle, Trailing: nav ? (it.lead || "") : it.trailing, "Show trailing": nav ? !!it.lead : true, "Show leading": it.icon !== false });
+        await swapIcon(i, "Icon", iconFor((it.icon || "") + " " + it.title + " " + (it.subtitle || "")));
+        fillW(parent, i);
+      }
+    } catch (e) {
+      for (const it of (b.items || [])) {
+        await drawNativeListItem(parent, it);
+      }
+    }
+    return true;
+  }
+  if (k === "sectionheading") {
+    const sh = al("HORIZONTAL", { name: "Section heading", paddingLeft: 16, paddingRight: 16, paddingTop: 16, paddingBottom: 8, counterAxisAlignItems: "CENTER" });
+    const tit = await txt(b.text || "", "Label/Large", "text/primary");
+    tit.fontSize = 16;
+    fillW(sh, tit);
+    if (b.action) {
+      const act = await txt(b.action, "Label/Small", "brand/primary");
+      sh.appendChild(act);
+    }
+    fillW(parent, sh);
+    return true;
+  }
+  if (k === "divider") {
+    const d = figma.createFrame();
+    d.name = "Divider";
+    d.resize(W, b.thick ? 4 : 1);
+    d.fills = [{ type: "SOLID", color: hex(b.thick ? "#2C2C2C" : "#1F1F1F") }];
+    fillW(parent, d);
+    return true;
+  }
+  if (k === "input" || k === "select" || k === "search") {
+    try {
+      const i = await inst(k === "search" ? "Search field" : k === "select" ? "Select" : "Text field", { State: b.error ? "Error" : "Default" }, { Label: b.label || "", Value: b.value || b.placeholder || "", Helper: b.error || b.helper || "", "Show helper": !!(b.error || b.helper) });
+      fillW(parent, i);
+    } catch (e) {
+      const inp = al("VERTICAL", { name: "Input field", itemSpacing: 4, paddingLeft: 16, paddingRight: 16 });
+      if (b.label) {
+        const lb = await txt(b.label, "Label/Small", "text/secondary");
+        lb.fontSize = 13;
+        fillW(inp, lb);
+      }
+      const box = al("HORIZONTAL", { name: "Box", paddingLeft: 14, paddingRight: 14, cornerRadius: 8, counterAxisAlignItems: "CENTER" });
+      box.resize(W - 32, 44);
+      box.fills = [{ type: "SOLID", color: hex("#1F1F1F") }];
+      box.strokes = [{ type: "SOLID", color: hex(b.error ? "#FF6B5E" : "#2C2C2C") }];
+      box.strokeWeight = 1;
+      const v = await txt(b.value || b.placeholder || "", "Body/Medium", b.value ? "text/primary" : "text/secondary");
+      fillW(box, v);
+      if (b.t === "select") {
+        const ar = await txt("▾", "Label/Small", "text/secondary");
+        box.appendChild(ar);
+      }
+      fillW(inp, box);
+      fillW(parent, inp);
+    }
+    return true;
+  }
+  if (k === "check") {
+    if (b.kind === "toggle") {
+      const r = al("HORIZONTAL", { name: "Switch row", itemSpacing: 16, paddingLeft: 16, paddingRight: 16, paddingTop: 12, paddingBottom: 12, counterAxisAlignItems: "CENTER" }); fillW(parent, r);
+      fillW(r, await txt(b.label || "", "Label/Large", "text/primary"));
+      const sw = figma.createFrame(); sw.resize(44, 24); sw.cornerRadius = 12;
+      sw.fills = [{ type: "SOLID", color: hex(b.checked ? "#FFC800" : "#2C2C2C") }];
+      r.appendChild(sw);
+      return true;
+    }
+    const ty = b.kind === "radio" ? "Option" : "Check";
+    try {
+      const i = await inst("List item", { Type: ty, Selected: b.checked ? "True" : "False" }, { Title: b.label || "", "Show description": !!b.detail, Description: b.detail || "", "Show trailing": false, "Show leading": false });
+      fillW(parent, i);
+    } catch(e) {
+      const r = al("HORIZONTAL", { name: "Checkbox", itemSpacing: 12, paddingLeft: 16, paddingRight: 16, paddingTop: 12, paddingBottom: 12, counterAxisAlignItems: "CENTER" });
+      const cb = figma.createFrame(); cb.resize(20, 20); cb.cornerRadius = b.kind === "radio" ? 10 : 4;
+      cb.fills = [{ type: "SOLID", color: hex(b.checked ? "#FFC800" : "#1F1F1F") }];
+      cb.strokes = [{ type: "SOLID", color: hex(b.checked ? "#FFC800" : "#8A8A8A") }];
+      r.appendChild(cb);
+      fillW(r, await txt(b.label || "", "Label/Large", "text/primary"));
+      fillW(parent, r);
+    }
+    return true;
+  }
+  if (k === "chips" || k === "tags") {
+    const r = al("HORIZONTAL", { name: "Tags", itemSpacing: 8, counterAxisSpacing: 8, layoutWrap: "WRAP", paddingLeft: 16, paddingRight: 16 });
+    fillW(parent, r);
+    for (const s of (b.items || [])) {
+      const it = typeof s === "object" && s ? s : { text: s };
+      const tag = al("HORIZONTAL", { name: "Tag", paddingLeft: 10, paddingRight: 10, paddingTop: 6, paddingBottom: 6, cornerRadius: 99 });
+      tag.fills = [{ type: "SOLID", color: hex("#F3F4F6") }];
+      const tt = await txt(it.text || "", "Caption");
+      tt.fontSize = 12;
+      tt.fills = [{ type: "SOLID", color: hex("#374151") }];
+      tag.appendChild(tt);
+      r.appendChild(tag);
+    }
+    return true;
+  }
+  if (k === "tabs") {
+    try {
+      const items = (b.items || []).slice(0, 3); if (items.length < 2) return false;
+      const i = await inst("Tabs", { Active: String(Math.min(items.length, (b.active || 0) + 1)) }, { "Tab 1": items[0], "Tab 2": items[1], "Tab 3": items[2] || "" });
+      fillW(parent, i); if (items.length < 3) { const t3 = child(i, "Tab 3"); if (t3) t3.visible = false; }
+    } catch(e) {
+      const row = al("HORIZONTAL", { name: "Tabs", itemSpacing: 16, paddingLeft: 16, paddingRight: 16, paddingTop: 8, paddingBottom: 8 });
+      for (let idx = 0; idx < (b.items || []).length; idx++) {
+        const item = b.items[idx];
+        const isActive = idx === (b.active || 0);
+        const t = await txt(item, isActive ? "Label/Medium" : "Body/Medium", isActive ? "brand/primary" : "text/secondary");
+        row.appendChild(t);
+      }
+      fillW(parent, row);
+    }
+    return true;
+  }
+  if (k === "segmented") {
+    try {
+      const items = (b.items || []).slice(0, 3); if (items.length < 2) return false;
+      fillW(parent, await inst("Segmented control", { Options: String(items.length) }, { "Option 1": items[0], "Option 2": items[1], "Option 3": items[2] || "" }));
+    } catch(e) {
+      const row = al("HORIZONTAL", { name: "Segmented control", itemSpacing: 4, paddingLeft: 4, paddingRight: 4, paddingTop: 4, paddingBottom: 4, cornerRadius: 8 });
+      row.fills = [{ type: "SOLID", color: hex("#F3F4F6") }];
+      for (const item of (b.items || [])) {
+        const seg = al("HORIZONTAL", { paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, cornerRadius: 6, primaryAxisAlignItems: "CENTER" });
+        seg.fills = [{ type: "SOLID", color: hex("#FFFFFF") }];
+        seg.appendChild(await txt(item, "Label/Small", "text/primary"));
+        row.appendChild(seg);
+      }
+      fillW(parent, row);
+    }
+    return true;
+  }
+  if (k === "progress") {
+    if (b.label) fillW(parent, await txt(b.label, "Label/Medium", "text/primary"));
+    try {
+      const i = await inst("Progress bar", { Type: b.value == null ? "Indeterminate" : "Determinate" }); fillW(parent, i);
+      const f = child(i, "Fill"); if (f && b.value != null) { try { f.resize(Math.max(4, (W - 32) * Math.max(0, Math.min(100, Number(b.value) || 0)) / 100), f.height); } catch (e) {} }
+    } catch(e) {
+      const track = figma.createFrame(); track.name = "Progress bar"; track.resize(W - 32, 4); track.cornerRadius = 2;
+      track.fills = [{ type: "SOLID", color: hex("#E5E7EB") }];
+      const pct = Math.max(0, Math.min(100, Number(b.value) || 30));
+      const bar = figma.createFrame(); bar.name = "Fill"; bar.resize((W - 32) * pct / 100, 4); bar.cornerRadius = 2;
+      bar.fills = [{ type: "SOLID", color: hex("#0F6E6A") }];
+      track.appendChild(bar);
+      fillW(parent, track);
+    }
+    return true;
+  }
+  if (k === "avatar") {
+    const r = al("HORIZONTAL", { name: "Avatar", itemSpacing: 12, counterAxisAlignItems: "CENTER", paddingLeft: 16, paddingRight: 16 });
+    fillW(parent, r);
+    try {
+      r.appendChild(await inst("Avatar", { Size: "Medium" }, { Initials: String(b.initials || (b.name || "·").split(" ").map(x => x[0]).join("")).slice(0, 2).toUpperCase() }));
+    } catch(e) {
+      const av = al("HORIZONTAL", { primaryAxisAlignItems: "CENTER", counterAxisAlignItems: "CENTER" });
+      av.resize(40, 40); av.cornerRadius = 20; av.fills = [{ type: "SOLID", color: hex("#0F6E6A") }];
+      const ini = await txt(String(b.initials || (b.name || "U")[0]).slice(0, 2).toUpperCase(), "Label/Medium", "text/white");
+      av.appendChild(ini);
+      r.appendChild(av);
+    }
+    const col = al("VERTICAL", { itemSpacing: 2 }); fillW(r, col);
+    fillW(col, await txt(b.name || "", "Label/Large", "text/primary"));
+    if (b.detail) fillW(col, await txt(b.detail, "Body/Medium", "text/secondary"));
+    return true;
+  }
+  if (k === "driver") {
+    try {
+      fillW(parent, await inst("Driver card", null, { Name: b.name || "Carlos M.", Rating: b.rating || "4,95", Car: b.car || "Toyota Corolla · Gris", Plate: b.plate || "4821 LKY" }));
+    } catch(e) {
+      const card = al("HORIZONTAL", { name: "Driver card", itemSpacing: 12, paddingLeft: 16, paddingRight: 16, paddingTop: 12, paddingBottom: 12, cornerRadius: 12, counterAxisAlignItems: "CENTER" });
+      card.fills = [{ type: "SOLID", color: hex("#F8FAFC") }];
+      card.strokes = [{ type: "SOLID", color: hex("#E2E8F0") }];
+      card.strokeWeight = 1;
+      const av = al("HORIZONTAL", { primaryAxisAlignItems: "CENTER", counterAxisAlignItems: "CENTER" });
+      av.resize(44, 44); av.cornerRadius = 22; av.fills = [{ type: "SOLID", color: hex("#CBD5E1") }];
+      av.appendChild(await txt("👤", "Label/Medium"));
+      card.appendChild(av);
+      const col = al("VERTICAL", { itemSpacing: 2 }); fillW(card, col);
+      fillW(col, await txt((b.name || "Carlos M.") + " ★ " + (b.rating || "4.95"), "Label/Large", "text/primary"));
+      fillW(col, await txt((b.car || "Toyota Corolla") + " · " + (b.plate || "4821 LKY"), "Body/Medium", "text/secondary"));
+      fillW(parent, card);
+    }
+    return true;
+  }
+  if (k === "empty") {
+    try {
+      const i = await inst("Empty state", null, { Title: b.title || "", Description: b.text || "", "Show action": !!b.cta }); fillW(parent, i);
+      if (b.cta) { const a = child(i, "Action"); if (a && a.type === "INSTANCE") setP(a, { Label: b.cta }); }
+    } catch(e) {
+      const em = al("VERTICAL", { name: "Empty state", itemSpacing: 8, paddingLeft: 24, paddingRight: 24, paddingTop: 32, paddingBottom: 32, counterAxisAlignItems: "CENTER", primaryAxisAlignItems: "CENTER" });
+      fillW(em, await txt("🔍", "Heading/Large"));
+      fillW(em, await txt(b.title || "No hay resultados", "Heading/Medium", "text/primary"));
+      if (b.text) fillW(em, await txt(b.text, "Body/Medium", "text/secondary"));
+      fillW(parent, em);
+    }
+    return true;
+  }
+  if (k === "snackbar") {
+    try {
+      fillW(parent, await inst("Snackbar", null, { Message: b.text || "", Action: b.action || "", "Show action": !!b.action }));
+    } catch(e) {
+      const sb = al("HORIZONTAL", { name: "Snackbar", itemSpacing: 12, paddingLeft: 16, paddingRight: 16, paddingTop: 12, paddingBottom: 12, cornerRadius: 8, counterAxisAlignItems: "CENTER" });
+      sb.fills = [{ type: "SOLID", color: hex("#1F2937") }];
+      const m = await txt(b.text || "", "Body/Medium"); m.fills = [{ type: "SOLID", color: hex("#FFFFFF") }];
+      fillW(sb, m);
+      if (b.action) {
+        const a = await txt(b.action, "Label/Medium"); a.fills = [{ type: "SOLID", color: hex("#38BDF8") }];
+        sb.appendChild(a);
+      }
+      fillW(parent, sb);
+    }
+    return true;
+  }
+  if (k === "dialog") {
+    try {
+      const i = await inst("Dialog", null, { Title: b.title || "", Message: b.text || "" }); parent.appendChild(i);
+      if (b.primary) { const p = child(i, "Primary"); if (p) setP(p, { Label: b.primary }); }
+      if (b.secondary) { const s = child(i, "Secondary"); if (s) setP(s, { Label: b.secondary }); }
+    } catch(e) {
+      const dg = al("VERTICAL", { name: "Dialog", itemSpacing: 12, paddingLeft: 20, paddingRight: 20, paddingTop: 20, paddingBottom: 20, cornerRadius: 16 });
+      dg.fills = [{ type: "SOLID", color: hex("#FFFFFF") }];
+      fillW(dg, await txt(b.title || "", "Heading/Medium", "text/primary"));
+      if (b.text) fillW(dg, await txt(b.text, "Body/Medium", "text/secondary"));
+      fillW(parent, dg);
+    }
+    return true;
+  }
+  return false;
+}
+/* ===== Composiciones con tokens (sin componente propio) ===== */
+async function surface(name, props) { const f = al("VERTICAL", Object.assign({ name, itemSpacing: 6, paddingTop: 16, paddingBottom: 16, paddingLeft: 16, paddingRight: 16, cornerRadius: 16 }, props || {})); f.fills = await pv("bg/tertiary"); return f; }
+function regLinks(b, nodes) {
+  if (!nodes.length) return;
+  const n0 = nodes[0];
+  if (b.t === "list") { (b.items || []).forEach((it, i) => { if (it && it.to && nodes[i]) LINKS.push({ node: nodes[i], to: it.to, label: it.title }); }); return; }
+  if (b.t === "appbar") { const l = child(n0, "Leading"); if (b.to && l) LINKS.push({ node: l, to: b.to, label: "Volver" }); else if (b.left === "back" && l) BACKS.push(l); return; }
+  if (b.t === "empty") { const a = n0.type === "INSTANCE" ? child(n0, "Action") : null; if (b.to) LINKS.push({ node: a || n0, to: b.to, label: b.cta }); return; }
+  if (b.t === "dialog") { const p = child(n0, "Primary"), s = child(n0, "Secondary"); if (b.to && p) LINKS.push({ node: p, to: b.to, label: b.primary }); if (b.secondaryTo && s) LINKS.push({ node: s, to: b.secondaryTo, label: b.secondary }); return; }
+  if (b.to) LINKS.push({ node: n0, to: b.to, label: b.label || b.title || b.cta || b.placeholder || "" });
+}
+async function block(parent, b) {
+  if (!b || typeof b !== "object") return;
+  const target = BLEED.has(b.t) || (b.t === "image" && /mapa|map|ruta/i.test(b.label || "")) ? parent : await pane(parent);
+  const before = target === parent ? parent.children.length : 0;
+  const done = () => regLinks(b, target.children.slice(before));
+  try { if (await dsBlock(target, b)) { done(); return; } } catch (e) { dsErrors.push(b.t + ": " + String(e && e.message || e).slice(0, 80)); }
+  const k = b.t;
+  if (k === "heading") { const lv = b.level || 1; fillW(target, await txt(b.text, lv === 1 ? "Heading/Large" : lv === 2 ? "Heading/Medium" : "Heading/Small")); }
+  else if (k === "text") { fillW(target, await txt(b.text, b.size === "s" ? "Body/Medium" : "Body/Large", b.tone === "muted" ? "text/secondary" : "text/primary")); }
+  else if (k === "card") { const c = await surface("Card"); fillW(target, c); if (b.meta) fillW(c, await txt(b.meta, "Caption", "text/secondary")); if (b.title) fillW(c, await txt(b.title, "Label/Large")); if (b.body) fillW(c, await txt(b.body, "Body/Medium", "text/secondary")); if (b.cta) { const t = await txt(b.cta, "Label/Medium", "text/primary"); t.textDecoration = "UNDERLINE"; fillW(c, t); } }
+  else if (k === "stat") { const c = await surface("Stat", { itemSpacing: 2, paddingTop: 12, paddingBottom: 12, paddingLeft: 12, paddingRight: 12 }); fillW(target, c); fillW(c, await txt(b.label, "Caption", "text/secondary")); fillW(c, await txt(b.value, "Heading/Small")); if (b.delta) fillW(c, await txt(b.delta, "Caption", "status/positive")); }
+  else if (k === "tile") { const c = await surface("Tile", { counterAxisAlignItems: "CENTER", itemSpacing: 8, paddingTop: 14, paddingBottom: 14, paddingLeft: 8, paddingRight: 8 }); fillW(target, c); const ic = ICONS[iconFor(b.icon + " " + b.label, "car")]; if (ic) { try { c.appendChild((await figma.getNodeByIdAsync(ic)).createInstance()); usedDs.add("Icon"); } catch (e) {} } const t = await txt(b.label, "Label/Medium"); t.textAlignHorizontal = "CENTER"; fillW(c, t); }
+  else if (k === "row" || k === "grid") {
+    const kids = b.children || []; const cols = k === "grid" ? Math.max(1, Math.min(4, b.cols || 2)) : kids.length || 1;
+    const g = al("VERTICAL", { name: k === "grid" ? "Grid" : "Row", itemSpacing: 12 }); fillW(target, g);
+    for (let i = 0; i < kids.length; i += cols) { const r = al("HORIZONTAL", { itemSpacing: 12 }); fillW(g, r); for (const ch of kids.slice(i, i + cols)) { const cell = al("VERTICAL", { itemSpacing: 8 }); fillW(r, cell); try { if (!(await dsBlock(cell, ch))) await block(cell, ch); } catch (e) { await block(cell, ch); } } for (let j = kids.slice(i, i + cols).length; j < cols; j++) fillW(r, al("VERTICAL")); }
+  }
+  else if (k === "image") { const f = al("VERTICAL", { name: "Imagen", cornerRadius: 16, primaryAxisAlignItems: "CENTER", counterAxisAlignItems: "CENTER" }); f.fills = await pv("bg/tertiary"); fillW(target, f); f.resize(f.width, Number(b.h) || 160); f.primaryAxisSizingMode = "FIXED"; f.appendChild(await txt(b.label || "Imagen", "Caption", "text/secondary")); }
+  else if (k === "spacer") { const s = al("VERTICAL"); s.resize(10, Number(b.h) || 8); fillW(target, s); s.layoutSizingVertical = "FIXED"; }
+  else if (b.text || b.label) fillW(target, await txt(b.text || b.label, "Body/Large"));
+  if (target !== parent && target.children.length === 0) { target.remove(); return; }
+  done();
+}
+async function screen(s) {
+  const f = al("VERTICAL", { name: s.name || s.id || "Pantalla", itemSpacing: 0, clipsContent: true });
+  f.fills = [{ type: "SOLID", color: hex("#000000") }];
+  f.cornerRadius = 24;
+  f.strokes = [{ type: "SOLID", color: hex("#2C2C2C") }];
+  f.strokeWeight = 1;
+  f.resize(W, H);
+  f.counterAxisSizingMode = "FIXED";
+  f.primaryAxisSizingMode = "AUTO";
+  f.minHeight = H;
+  if (MOBILE) {
+    try {
+      fillW(f, await inst("Status bar"));
+    } catch (e) {
+      const sb = al("HORIZONTAL", { name: "Status bar", paddingLeft: 24, paddingRight: 24, counterAxisAlignItems: "CENTER", primaryAxisAlignItems: "SPACE_BETWEEN" });
+      sb.resize(W, 44);
+      const tm = await txt("9:41", "Label/Small", "text/primary");
+      tm.fontSize = 14; tm.fontName = { family: "Inter", style: "Bold" };
+      sb.appendChild(tm);
+      const ic = await txt("📶  🔋", "Caption", "text/primary");
+      ic.fontSize = 12;
+      sb.appendChild(ic);
+      f.appendChild(sb);
+    }
+  }
+  const blocks = (s.blocks || []).filter(b => b && typeof b === "object");
+  const nav = blocks.filter(b => b.t === "bottomnav" || b.t === "dock");
+  const rest = blocks.filter(b => b.t !== "bottomnav" && b.t !== "dock");
+  const lead = [];
+  while (rest.length && (rest[0].t === "appbar" || rest[0].t === "map")) lead.push(rest.shift());
+  for (const b of lead) await block(f, b);
+  const c = al("VERTICAL", { name: "Content", itemSpacing: 16, paddingTop: lead.length && lead[lead.length - 1].t === "map" ? 0 : 8, paddingBottom: 24 }); fillW(f, c);
+  for (const b of rest) await block(c, b);
+  for (const b of nav) {
+    try {
+      if (b.t === "dock") {
+        try {
+          const i = await inst("Button dock", { Layout: b.secondary ? "Double" : "Single" }, { Caption: b.caption || "", "Show caption": !!b.caption }); fillW(f, i); const p = child(i, "Primary"); if (p) { setP(p, { Label: b.label || "" }); if (b.to) LINKS.push({ node: p, to: b.to, label: b.label }); } const sc = child(i, "Secondary"); if (sc && b.secondary) { setP(sc, { Label: b.secondary }); if (b.secondaryTo) LINKS.push({ node: sc, to: b.secondaryTo, label: b.secondary }); } continue;
+        } catch(e) {
+          await drawNativeDock(f, b);
+          continue;
+        }
+      }
+      const labels = ["Inicio", "Servicios", "Actividad", "Cuenta"]; const items = b.items || []; const a = items[b.active || 0];
+      const act = labels.find(l => String(a || "").toLowerCase().startsWith(l.toLowerCase().slice(0, 4))) || labels[Math.min(3, b.active || 0)];
+      try {
+        const bn = await inst("Bottom navigation", { Active: act }); fillW(f, bn);
+        for (const [lab, to] of Object.entries(b.tabs || {})) { if (lab === act) continue; const it = child(bn, "Item " + lab); if (it) LINKS.push({ node: it, to, label: lab, tab: true }); }
+      } catch(e) {
+        const bn = al("HORIZONTAL", { name: "Bottom navigation", paddingLeft: 16, paddingRight: 16, counterAxisAlignItems: "CENTER", primaryAxisAlignItems: "SPACE_BETWEEN" });
+        bn.resize(W, 64);
+        bn.fills = [{ type: "SOLID", color: hex("#FFFFFF") }];
+        bn.strokes = [{ type: "SOLID", color: hex("#E5E7EB") }];
+        bn.strokeWeight = 1;
+        const navIcons = ["🏠", "🚗", "📋", "👤"];
+        for (let idx = 0; idx < labels.length; idx++) {
+          const tabCol = al("VERTICAL", { counterAxisAlignItems: "CENTER", primaryAxisAlignItems: "CENTER", itemSpacing: 2 });
+          tabCol.resize(60, 50);
+          const ic = await txt(navIcons[idx], "Label/Medium");
+          ic.fontSize = 18; tabCol.appendChild(ic);
+          const tx = await txt(labels[idx], "Caption");
+          tx.fontSize = 11; tx.fills = [{ type: "SOLID", color: hex(labels[idx] === act ? "#0F6E6A" : "#6B7280") }];
+          tabCol.appendChild(tx);
+          bn.appendChild(tabCol);
+        }
+        f.appendChild(bn);
+      }
+    } catch (e) { dsErrors.push(b.t + ": " + String(e && e.message || e).slice(0, 80)); }
+  }
+  const used = f.children.reduce((m, n) => m + n.height, 0);
+  if (used < H) { try { c.layoutSizingVertical = "FILL"; } catch (e) {} }
+  return f;
+}
+/* ===== Página / sección de trabajo ===== */
+/* Página elegida en el portal (por id); si no existe, por nombre; si se pide una nueva, se crea */
+let page = null, fallback = false;
+if (META.pageId) { try { const n = await figma.getNodeByIdAsync(META.pageId); if (n && n.type === "PAGE") page = n; } catch (e) {} }
+if (!page && META.targetPage) page = figma.root.children.find(p => p.name === META.targetPage) || null;
+if (!page && !META.newPage && META.workPage) page = figma.root.children.find(p => p.name === META.workPage) || null;
+if (!page) {
+  try { page = figma.createPage(); page.name = META.targetPage || META.pageName; }
+  catch (e) { page = figma.root.children[figma.root.children.length - 1]; fallback = true; if (!page) throw new Error("PAGE_LIMIT: " + String(e && e.message || e).slice(0, 160)); }
+}
+await figma.setCurrentPageAsync(page);
+/* Si ya hay secciones, la nueva va debajo de la que está más abajo, alineada con ella */
+const SECS = page.children.filter(n => n.type === "SECTION");
+let placeX = 0, placeY = 0;
+if (SECS.length) { const last = SECS.reduce((m, n) => (n.y + n.height > m.y + m.height ? n : m)); placeX = last.x; placeY = last.y + last.height + 200; }
+else if (page.children.length) { placeY = page.children.reduce((m, n) => Math.max(m, n.y + n.height), -Infinity) + 300; placeX = Math.min(...page.children.map(n => n.x)); }
+/* Design asset «Tarea»: las tareas que ya hay en esta página pasan a «Old»; la nueva sección entra «In progress» */
+let tareaSet = null, tareaOld = 0, tareaNew = false;
+try { if (META.tareaSetId) { const n = await figma.getNodeByIdAsync(META.tareaSetId); if (n && n.type === "COMPONENT_SET") tareaSet = n; } } catch (e) {}
+if (!tareaSet) for (const pg of figma.root.children) { try { await pg.loadAsync(); } catch (e) {} const f = pg.findOne(n => n.type === "COMPONENT_SET" && n.name === "Tarea"); if (f) { tareaSet = f; break; } }
+/* Color de la sección según el estado de su tarea: fondo al 10 % y borde al 100 % */
+const SEC_COLOR = { "Old": "#E9E9E9", "In progress": "#8A38F5" };
+function secStyle(sec, status) { const c = SEC_COLOR[status]; if (!c || !sec) return; try { sec.fills = [{ type: "SOLID", color: hex(c), opacity: 0.1 }]; sec.strokes = [{ type: "SOLID", color: hex(c), opacity: 1 }]; } catch (e) { dsErrors.push("color sección: " + String(e && e.message || e).slice(0, 60)); } }
+const secOf = n => { let p = n.parent; while (p && p.type !== "SECTION" && p.type !== "PAGE") p = p.parent; return p && p.type === "SECTION" ? p : null; };
+let tareaKey = null;
+if (tareaSet) { const defs = tareaSet.componentPropertyDefinitions || {}; tareaKey = Object.keys(defs).find(k => defs[k].type === "VARIANT" && (defs[k].variantOptions || []).includes("In progress") && (defs[k].variantOptions || []).includes("Old")) || null; }
+if (tareaSet && tareaKey) {
+  for (const ins of page.findAllWithCriteria({ types: ["INSTANCE"] })) {
+    try { const mc = await ins.getMainComponentAsync(); if (!mc || !mc.parent || mc.parent.id !== tareaSet.id) continue;
+      const pk = Object.keys(ins.componentProperties).find(k => k === tareaKey || k.split("#")[0] === tareaKey) || tareaKey;
+      if (ins.componentProperties[pk] && ins.componentProperties[pk].value !== "Old") { ins.setProperties({ [pk]: "Old" }); tareaOld++; } secStyle(secOf(ins), "Old"); } catch (e) { dsErrors.push("tarea old: " + String(e && e.message || e).slice(0, 60)); }
+  }
+}
+const dNow = new Date(), dd = n => String(n).padStart(2, "0");
+const secName = META.sectionName || `(${dd(dNow.getDate())}.${dd(dNow.getMonth() + 1)}.${String(dNow.getFullYear()).slice(2)}) ${META.title || META.pageName}`;
+const section = figma.createSection(); section.name = secName; section.x = placeX; section.y = placeY;
+secStyle(section, "In progress");
+const PAD = 80, GAP = 280, TOP = 180;
+let docX = PAD;
+if (tareaSet && tareaKey) {
+  try { const vIP = tareaSet.children.find(c => (c.variantProperties || {})[tareaKey] === "In progress") || tareaSet.defaultVariant;
+    const t = vIP.createInstance(); section.appendChild(t); t.x = PAD; t.y = TOP;
+    const tt = t.findOne(n => n.type === "TEXT"); if (tt) { await figma.loadFontAsync(tt.fontName); tt.characters = String(META.title || META.pageName); }
+    docX = PAD + t.width + 96; tareaNew = true; } catch (e) { dsErrors.push("tarea: " + String(e && e.message || e).slice(0, 60)); }
+}
+/* Nota con el design asset «Documentación» (etiqueta, título, subtítulo y texto) */
+let docComp = null, docOk = false;
+if (META.note) {
+  try { if (META.docCompId) { const n = await figma.getNodeByIdAsync(META.docCompId); if (n && n.type === "COMPONENT") docComp = n; } } catch (e) {}
+  if (!docComp) for (const pg of figma.root.children) { if (pg.name !== "Design assets") continue; try { await pg.loadAsync(); } catch (e) {} docComp = pg.findOne(n => n.type === "COMPONENT" && n.name === "Documentación"); if (docComp) break; }
+  if (!docComp) for (const pg of figma.root.children) { try { await pg.loadAsync(); } catch (e) {} const f = pg.findOne(n => n.type === "COMPONENT" && n.name === "Documentación"); if (f) { docComp = f; break; } }
+}
+if (docComp) {
+  try { const di = docComp.createInstance(); section.appendChild(di); di.x = docX; di.y = TOP;
+    const T = di.findAll(n => n.type === "TEXT"); const vals = [META.note.label, META.title, META.note.heading, META.note.text];
+    for (let i = 0; i < T.length && i < vals.length; i++) { const t = T[i]; const fn = t.fontName; if (fn !== figma.mixed) await figma.loadFontAsync(fn); else for (const f of t.getRangeAllFontNames(0, t.characters.length)) await figma.loadFontAsync(f); t.characters = String(vals[i] || ""); }
+    docOk = true; } catch (e) { dsErrors.push("nota: " + String(e && e.message || e).slice(0, 60)); }
+}
+const doc = al("VERTICAL", { name: "Documentación", itemSpacing: 14, paddingTop: 28, paddingBottom: 28, paddingLeft: 28, paddingRight: 28, cornerRadius: 16 }); section.appendChild(doc);
+doc.fills = [{ type: "SOLID", color: hex("#1F1F1F") }];
+doc.strokes = [{ type: "SOLID", color: hex("#2C2C2C") }];
+doc.strokeWeight = 1;
+doc.resize(440, 100); doc.counterAxisSizingMode = "FIXED"; doc.primaryAxisSizingMode = "AUTO"; doc.x = docX; doc.y = TOP;
+async function dt(s, style, color) { if (docOk) return; const t = await txt(s, style); t.fills = [{ type: "SOLID", color: hex(color) }]; fillW(doc, t); }
+await dt(META.key + " · v" + META.version, "Label/Small", "#AFAFAF");
+await dt(META.title, "Heading/Large", "#FFFFFF");
+for (const sec of (META.sections || [])) { await dt(sec.h, "Label/Medium", "#FFC800"); for (const it of (sec.items || [])) await dt("• " + it, "Body/Medium", "#E5E7EB"); }
+await dt("Prototipo: pulsa Presentar (▶) en Figma y elige el flujo «" + META.pageName + "». Flecha continua: transición definida por el arquitecto UX. Flecha discontinua: pestañas de la barra inferior (desde la primera pantalla). Etiqueta discontinua: pantalla que no forma parte de esta propuesta.", "Caption", "#AFAFAF");
+if (docOk) doc.remove();
+const ids = [], frames = {};
+let x = docX + 440 + GAP;
+for (let i = 0; i < (SPEC.screens || []).length; i++) {
+  const s = SPEC.screens[i];
+  const lab = al("VERTICAL", { name: "Etiqueta / " + (s.name || i + 1), itemSpacing: 4 }); section.appendChild(lab); lab.resize(W, 60);
+  const l1 = await txt((i + 1) + ". " + (s.name || "Pantalla"), "Label/Large"); l1.fills = [{ type: "SOLID", color: hex("#111827") }]; l1.fontSize = 16; fillW(lab, l1);
+  if (s.purpose) { const l2 = await txt(s.purpose, "Body/Medium"); l2.fills = [{ type: "SOLID", color: hex("#4B5563") }]; l2.fontSize = 12; fillW(lab, l2); }
+  lab.x = x; lab.y = TOP - 68;
+  const sc = await screen(s); section.appendChild(sc); sc.x = x; sc.y = TOP; ids.push(sc.id); frames[s.id] = sc;
+  x += W + GAP;
+}
+let maxB = TOP + H;
+for (const n of section.children) maxB = Math.max(maxB, n.y + n.height);
+/* Flechas y conectores del flujo */
+const ARROW = hex("#FFC800");
+const rel = n => {
+  try {
+    const a = n.absoluteBoundingBox, o = section.absoluteBoundingBox;
+    if (a && o) return { x: a.x - o.x, y: a.y - o.y, w: a.width, h: a.height };
+  } catch(e) {}
+  let cur = n, x = 0, y = 0;
+  while (cur && cur !== section && cur.parent) {
+    x += cur.x || 0;
+    y += cur.y || 0;
+    cur = cur.parent;
+  }
+  return { x, y, w: n.width || 0, h: n.height || 0 };
+};
+
+async function arrow(pts, label, opt) {
+  opt = opt || {};
+  const minX = Math.min(...pts.map(p => p[0])), minY = Math.min(...pts.map(p => p[1]));
+  const maxX = Math.max(...pts.map(p => p[0])), maxY = Math.max(...pts.map(p => p[1]));
+  const v = figma.createVector();
+  v.name = "Flecha" + (label ? " / " + label : "");
+  await v.setVectorNetworkAsync({
+    vertices: pts.map((p, i) => Object.assign({ x: p[0] - minX, y: p[1] - minY }, i === pts.length - 1 ? { strokeCap: "ARROW_LINES" } : {})),
+    segments: pts.slice(1).map((p, i) => ({ start: i, end: i + 1 }))
+  });
+  v.strokes = [{ type: "SOLID", color: opt.color || ARROW }];
+  v.strokeWeight = opt.dash ? 2 : 3;
+  v.strokeJoin = "ROUND";
+  v.fills = [];
+  if (opt.dash) v.dashPattern = [8, 6];
+  section.appendChild(v);
+  v.x = minX;
+  v.y = minY;
+  if (label) {
+    const t = await txt(String(label).slice(0, 40), "Label/Small");
+    t.fills = [{ type: "SOLID", color: hex(opt.pillText || "#000000") }];
+    t.fontSize = 11;
+    t.fontName = { family: "Inter", style: "Semi Bold" };
+    const pill = al("HORIZONTAL", {
+      name: "Etiqueta flecha",
+      paddingLeft: 10,
+      paddingRight: 10,
+      paddingTop: 4,
+      paddingBottom: 4,
+      cornerRadius: 12,
+      counterAxisAlignItems: "CENTER",
+      primaryAxisAlignItems: "CENTER"
+    });
+    pill.fills = [{ type: "SOLID", color: hex(opt.pill || "#FFC800") }];
+    if (opt.pillStroke) {
+      pill.strokes = [{ type: "SOLID", color: hex(opt.pillStroke) }];
+      pill.strokeWeight = 1.5;
+      pill.dashPattern = [4, 3];
+    }
+    pill.appendChild(t);
+    section.appendChild(pill);
+    const tw = Math.min(220, String(label).length * 7 + 24);
+    pill.resize(tw, 24);
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
+    pill.x = midX - tw / 2;
+    pill.y = midY - 12;
+  }
+}
+
+// Conectores nativos de Figma si están soportados
+let CONN = null;
+try { if (META.connectorId) { const n = await figma.getNodeByIdAsync(META.connectorId); if (n && n.type === "CONNECTOR") CONN = n; } } catch (e) {}
+if (!CONN) for (const pg of figma.root.children) { if (pg.name !== "Design assets") continue; try { await pg.loadAsync(); } catch (e) {} CONN = pg.findOne(n => n.type === "CONNECTOR"); if (CONN) break; }
+let connFont = null;
+try { await figma.loadFontAsync({ family: "Inter", style: "Medium" }); connFont = { family: "Inter", style: "Medium" }; } catch (e) {}
+
+const anchorOf = n => { let a = n, p = n.parent; while (p && p !== section && p.type !== "PAGE") { if (p.type === "INSTANCE" || p.name === "Button dock" || p.name === "Content") a = p; p = p.parent; } return a; };
+
+async function createFigmaConnector(startNode, endNode, label, isDashed) {
+  try {
+    let c = null;
+    if (CONN) {
+      c = CONN.clone();
+      section.appendChild(c);
+    } else if (typeof figma.createConnector === "function") {
+      c = figma.createConnector();
+      section.appendChild(c);
+      c.connectorEndStrokeCap = "LINE_ARROW";
+      c.strokes = [{ type: "SOLID", color: hex(isDashed ? "#6B7280" : "#0F6E6A") }];
+      c.strokeWeight = 2.5;
+    }
+    if (c) {
+      c.connectorStart = { endpointNodeId: anchorOf(startNode).id, magnet: "RIGHT" };
+      c.connectorEnd = { endpointNodeId: (endNode.type === "SECTION" ? endNode : anchorOf(endNode)).id, magnet: "LEFT" };
+      if (isDashed) { try { c.dashPattern = [10, 8]; } catch (e) {} }
+      if (label && connFont) {
+        try {
+          c.text.fontName = connFont;
+          c.text.characters = String(label).slice(0, 40);
+          c.text.fontSize = 12;
+        } catch (e) {}
+      }
+      c.name = "Conector / " + (label || "Flujo");
+      return c;
+    }
+  } catch (e) {
+    dsErrors.push("conector: " + String(e && e.message || e).slice(0, 60));
+  }
+  return null;
+}
+
+// Fallback de flujo para pantallas consecutivas si no tienen enlaces explícitos
+for (let i = 0; i < (SPEC.screens || []).length - 1; i++) {
+  const curS = SPEC.screens[i], nextS = SPEC.screens[i + 1];
+  const hasLink = LINKS.some(L => frames[curS.id] && frames[nextS.id] && L.to === nextS.id);
+  if (!hasLink && frames[curS.id] && frames[nextS.id]) {
+    LINKS.push({ node: frames[curS.id], to: nextS.id, label: nextS.name || "Siguiente paso" });
+  }
+}
+
+const order = Object.values(frames).map(f => f.id);
+const fi = n => order.indexOf(n.id);
+const pairs = new Set();
+const low = [];
+const firstTab = (() => { const t = LINKS.filter(L => L.tab && frames[L.to]).map(L => { let n = L.node; while (n && n.parent && n.parent !== section) n = n.parent; return n ? fi(n) : 99; }); return t.length ? Math.min(...t) : -1; })();
+
+for (const L of LINKS) {
+  if (L.node && String(L.to || "").startsWith("ext:")) {
+    const srcF = (() => { let n = L.node; while (n && n.parent && n.parent !== section) n = n.parent; return n; })();
+    if (!srcF) continue;
+    const r = rel(L.node), sf = rel(srcF);
+    const startX = sf.x + sf.w;
+    const startY = r.y + r.h / 2;
+    const pillX = startX + 36;
+    const pillW = Math.min(230, String(L.to).length * 6.5 + 28);
+    
+    const pill = al("HORIZONTAL", {
+      name: "Fuera de alcance / " + String(L.to).slice(4),
+      paddingLeft: 12,
+      paddingRight: 12,
+      paddingTop: 4,
+      paddingBottom: 4,
+      cornerRadius: 14,
+      counterAxisAlignItems: "CENTER",
+      primaryAxisAlignItems: "CENTER"
+    });
+    pill.fills = [{ type: "SOLID", color: hex("#1F1F1F") }];
+    pill.strokes = [{ type: "SOLID", color: hex("#6B6B6B") }];
+    pill.strokeWeight = 1.5;
+    pill.dashPattern = [4, 3];
+    const pt = await txt(String(L.to).slice(4, 34), "Label/Small");
+    pt.fills = [{ type: "SOLID", color: hex("#FFFFFF") }];
+    pt.fontSize = 11;
+    pill.appendChild(pt);
+    section.appendChild(pill);
+    pill.resize(pillW, 28);
+    pill.x = pillX;
+    pill.y = startY - 14;
+    
+    await arrow([[startX, startY], [pillX - 4, startY]], "", {
+      dash: true,
+      color: hex("#6B6B6B")
+    });
+    continue;
+  }
+  const tgt = frames[L.to];
+  if (!tgt || !L.node) continue;
+  const srcFrame = (() => { let n = L.node; while (n && n.parent && n.parent !== section) n = n.parent; return n; })();
+  if (!srcFrame || srcFrame === tgt) continue;
+
+  try {
+    const live = (await figma.getNodeByIdAsync(L.node.id)) || L.node;
+    await live.setReactionsAsync([{
+      trigger: { type: "ON_CLICK" },
+      actions: [{
+        type: "NODE",
+        destinationId: tgt.id,
+        navigation: "NAVIGATE",
+        transition: { type: "SMART_ANIMATE", easing: { type: "EASE_OUT" }, duration: 0.3 },
+        resetScrollPosition: true
+      }]
+    }]);
+  } catch (e) {
+    dsErrors.push("prototipo: " + String(e && e.message || e).slice(0, 60));
+  }
+
+  if (L.tab && fi(srcFrame) !== firstTab) continue;
+  const pk = [Math.min(fi(srcFrame), fi(tgt)), Math.max(fi(srcFrame), fi(tgt))].join("-");
+  if (pairs.has(pk)) continue;
+  pairs.add(pk);
+
+  await createFigmaConnector(L.node, tgt, L.label, !!L.tab);
+
+  const r = rel(L.node), sf = rel(srcFrame), tf = rel(tgt);
+  const startX = sf.x + sf.w;
+  const startY = r.y + r.h / 2;
+  const targetX = tf.x;
+  const targetY = tf.y + 450;
+  if (tf.x > sf.x) {
+    const mx = startX + (targetX - startX) / 2;
+    await arrow([[startX, startY], [mx, startY], [mx, targetY], [targetX - 6, targetY]], L.label, {
+      color: hex("#FFC800"),
+      pill: "#FFC800",
+      pillText: "#000000"
+    });
+  } else {
+    low.push({ sx: r.x + r.w / 2, sy: sf.y + sf.h, ex: tf.x + tf.w / 2, ey: tf.y + tf.h + 6, dist: Math.abs(fi(tgt) - fi(srcFrame)), label: L.label });
+  }
+}
+
+/* Flechas por debajo si hay regresos */
+low.sort((p, q) => q.dist - p.dist);
+for (let k = 0; k < low.length; k++) {
+  const L = low[k];
+  const yy = maxB + 60 + k * 34;
+  await arrow([[L.sx, L.sy], [L.sx, yy], [L.ex, yy], [L.ex, L.ey]], L.label, { color: hex("#FFC800"), pill: "#FFC800", pillText: "#000000", seg: 2, atEnd: true });
+}
+
+for (const n of BACKS) {
+  try {
+    await n.setReactionsAsync([{ trigger: { type: "ON_CLICK" }, actions: [{ type: "BACK" }] }]);
+  } catch (e) {}
+}
+let mx = 0, my = 0, mnY = 0;
+for (const n of section.children) { mx = Math.max(mx, n.x + n.width); my = Math.max(my, n.y + n.height); mnY = Math.min(mnY, n.y); }
+if (mnY < PAD) { const d = PAD - mnY; for (const n of section.children) n.y += d; my += d; }
+section.resizeWithoutConstraints(mx + PAD, my + PAD);
+if (ids.length) { try { const fs = (page.flowStartingPoints || []).filter(f => f.nodeId !== ids[0]); page.flowStartingPoints = fs.concat([{ nodeId: ids[0], name: META.pageName }]); } catch (e) { dsErrors.push("flujo: " + String(e && e.message || e).slice(0, 60)); } }
+figma.viewport.scrollAndZoomIntoView([section]);
+return { pageId: page.id, pageName: page.name, fallback, nodeId: section.id, sectionName: section.name, tareaOld, tareaNew, inSection: true, screenIds: ids, links: LINKS.length, dsUsed: [...usedDs], dsErrors: dsErrors.slice(0, 12) };

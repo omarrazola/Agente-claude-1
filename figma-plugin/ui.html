@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Portal Rumbo - AI Design Bridge</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #111827;
+      --text-muted: #6b7280;
+      --border: #e5e7eb;
+      --primary: #0F6E6A;
+      --primary-hover: #0c5754;
+      --success: #10b981;
+      --err: #ef4444;
+      --card-bg: #f9fafb;
+    }
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 16px;
+      color: var(--text);
+      background: var(--bg);
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 14px;
+    }
+    .title-area {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+      border-radius: 9999px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge.off {
+      background: #fef2f2;
+      color: #991b1b;
+      border-color: #fecaca;
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+    .badge.off .dot {
+      background: var(--err);
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .card-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+    .card-val {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      height: 40px;
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 8px;
+      transition: background 0.15s ease;
+    }
+    .btn:hover {
+      background: var(--primary-hover);
+    }
+    .btn.secondary {
+      background: #ffffff;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn.secondary:hover {
+      background: #f3f4f6;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .status-box {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      background: #f3f4f6;
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-top: 10px;
+      max-height: 90px;
+      overflow-y: auto;
+    }
+    .log-line {
+      margin-bottom: 4px;
+    }
+    .log-line:last-child {
+      margin-bottom: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title-area">
+      <strong>Portal Rumbo</strong>
+    </div>
+    <div class="badge" id="statusBadge">
+      <span class="dot"></span>
+      <span id="statusText">Conectando...</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Portal de diseño</div>
+    <div class="card-val" id="portalUrl">http://localhost:5173</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Páginas detectadas en Figma</div>
+    <div class="card-val" id="pagesCount">0 páginas</div>
+    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" id="currentPage">Página actual: -</div>
+  </div>
+
+  <div class="card" style="background: #f0fdf4; border-color: #bbf7d0;">
+    <div class="card-title" style="color: #166534;">💡 CÓMO IMPORTAR DISEÑOS</div>
+    <div style="font-size: 11px; color: #15803d; line-height: 1.4;">
+      1. Mantén este plugin <b>abierto</b>.<br>
+      2. En el portal web (<b>localhost:5173</b>), ve a una tarea con propuesta lista (fase <i>Revisión</i>).<br>
+      3. Pulsa <b>«Enviar a Figma»</b>.<br>
+      4. El diseño se dibujará automáticamente en este lienzo.
+    </div>
+  </div>
+
+  <button class="btn" id="btnSyncToAgents">
+    <span>📤</span> Enviar selección a los Agentes
+  </button>
+  <button class="btn secondary" id="btnCheckJobs">
+    <span>📥</span> Comprobar propuestas pendientes
+  </button>
+  <button class="btn secondary" id="btnRefreshPages">
+    <span>🔄</span> Sincronizar páginas con el Portal
+  </button>
+
+  <div class="status-box" id="logBox">
+    <div class="log-line">Iniciando puente con el portal...</div>
+  </div>
+
+  <script>
+    const PORTAL_URL = "http://localhost:5173";
+    const BACKEND_URL = "http://localhost:3001";
+    
+    let isConnected = false;
+    let localPages = [];
+    let pollingInterval = null;
+
+    const statusBadge = document.getElementById("statusBadge");
+    const statusText = document.getElementById("statusText");
+    const pagesCount = document.getElementById("pagesCount");
+    const currentPage = document.getElementById("currentPage");
+    const logBox = document.getElementById("logBox");
+    const btnSyncToAgents = document.getElementById("btnSyncToAgents");
+    const btnCheckJobs = document.getElementById("btnCheckJobs");
+    const btnRefreshPages = document.getElementById("btnRefreshPages");
+
+    function log(msg) {
+      const line = document.createElement("div");
+      line.className = "log-line";
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    async function apiFetch(path, options = {}) {
+      try {
+        const res = await fetch(`${PORTAL_URL}${path}`, options);
+        if (res.ok) return res;
+      } catch (e) {}
+      // Fallback directo al backend en 3001
+      return fetch(`${BACKEND_URL}${path}`, options);
+    }
+
+    async function notifyPagesToPortal(pages) {
+      if (!pages || !pages.length) return;
+      try {
+        await apiFetch("/api/figma/pages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pages })
+        });
+        setConnected(true);
+      } catch (e) {
+        setConnected(false);
+      }
+    }
+
+    function setConnected(ok) {
+      isConnected = ok;
+      if (ok) {
+        statusBadge.className = "badge";
+        statusText.textContent = "Conectado (5173)";
+      } else {
+        statusBadge.className = "badge off";
+        statusText.textContent = "Desconectado";
+      }
+    }
+
+    async function pollPendingJobs() {
+      try {
+        const res = await apiFetch("/api/figma/pending-job");
+        if (res.ok) {
+          setConnected(true);
+          const data = await res.json();
+          if (data && data.job) {
+            log(`Trabajo recibido del portal: ${data.job.description || data.job.key || "Render"}`);
+            // Enviar a code.js para dibujar en Figma
+            parent.postMessage({
+              pluginMessage: {
+                type: "EXECUTE_CODE",
+                jobId: data.job.id,
+                code: data.job.code
+              }
+            }, "*");
+          }
+        } else {
+          setConnected(false);
+        }
+      } catch (e) {
+        setConnected(false);
+      }
+    }
+
+    // Escuchar mensajes de code.js
+    window.addEventListener("message", async (event) => {
+      const msg = event.data && event.data.pluginMessage;
+      if (!msg) return;
+
+      if (msg.type === "PAGES_LIST") {
+        localPages = msg.pages || [];
+        pagesCount.textContent = `${localPages.length} página(s)`;
+        currentPage.textContent = `Página actual: ${msg.currentPage || "-"}`;
+        log(`${localPages.length} páginas detectadas en Figma.`);
+        await notifyPagesToPortal(localPages);
+      }
+
+      if (msg.type === "EXECUTE_RESULT") {
+        log(msg.success ? "✓ Propuesta dibujada con éxito." : `Error: ${msg.error}`);
+        try {
+          await apiFetch("/api/figma/job-result", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              jobId: msg.jobId,
+              success: msg.success,
+              result: msg.result,
+              error: msg.error
+            })
+          });
+        } catch (e) {}
+      }
+
+      if (msg.type === "SELECTION_DATA") {
+        if (!msg.nodes || !msg.nodes.length) {
+          log("No hay elementos seleccionados en Figma.");
+          return;
+        }
+        log(`Enviando ${msg.nodes.length} elemento(s) al portal...`);
+        try {
+          await apiFetch("/api/figma/sync-selection", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              nodes: msg.nodes,
+              pageName: msg.pageName,
+              timestamp: new Date().toISOString()
+            })
+          });
+          log("✓ Selección enviada al portal para los Agentes.");
+        } catch (e) {
+          log("Error enviando selección al portal.");
+        }
+      }
+    });
+
+    async function checkJobsManual() {
+      log("Buscando propuestas del portal...");
+      try {
+        const res = await apiFetch("/api/figma/pending-job");
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.job) {
+            log(`✓ Trabajo pendiente encontrado: ${data.job.description || data.job.key}`);
+            parent.postMessage({
+              pluginMessage: {
+                type: "EXECUTE_CODE",
+                jobId: data.job.id,
+                code: data.job.code
+              }
+            }, "*");
+            return;
+          }
+        }
+        const lastRes = await apiFetch("/api/figma/last-job");
+        if (lastRes.ok) {
+          const lastData = await lastRes.json();
+          if (lastData && lastData.job) {
+            log(`Re-importando última propuesta (${lastData.job.key || "diseño"})...`);
+            parent.postMessage({
+              pluginMessage: {
+                type: "EXECUTE_CODE",
+                jobId: lastData.job.id + "_retry",
+                code: lastData.job.code
+              }
+            }, "*");
+            return;
+          }
+        }
+        log("No hay ninguna propuesta enviada todavía. Ve al portal (localhost:5173) y pulsa «Enviar a Figma».");
+      } catch (e) {
+        log("Error al conectar con el portal.");
+      }
+    }
+
+    btnCheckJobs.addEventListener("click", () => {
+      checkJobsManual();
+    });
+
+    btnSyncToAgents.addEventListener("click", () => {
+      parent.postMessage({ pluginMessage: { type: "READ_SELECTION" } }, "*");
+    });
+
+    btnRefreshPages.addEventListener("click", () => {
+      parent.postMessage({ pluginMessage: { type: "GET_PAGES" } }, "*");
+    });
+
+    // Iniciar polling (con Web Worker ticker para evitar throttle cuando Figma está en segundo plano)
+    try {
+      const blob = new Blob([`setInterval(() => postMessage('tick'), 1500);`], { type: 'application/javascript' });
+      const worker = new Worker(URL.createObjectURL(blob));
+      worker.onmessage = () => pollPendingJobs();
+    } catch (e) {
+      pollingInterval = setInterval(pollPendingJobs, 1500);
+    }
+    pollPendingJobs();
+  </script>
+</body>
+</html>
