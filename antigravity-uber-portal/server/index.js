@@ -17,6 +17,14 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// Middleware para normalizar la ruta en entornos serverless (como Vercel)
+app.use((req, res, next) => {
+  if (!req.url.startsWith('/api') && !req.url.startsWith('/assets') && req.url !== '/' && !req.url.startsWith('/favicon')) {
+    req.url = '/api' + req.url;
+  }
+  next();
+});
+
 // Memoria volátil/caché de configuración runtime si el usuario la ajusta desde la UI
 let runtimeConfig = {
   geminiKey: process.env.GEMINI_API_KEY || '',
@@ -314,16 +322,21 @@ app.post('/api/config', (req, res) => {
   res.json({ ok: true, message: 'Configuración actualizada en memoria' });
 });
 
-// En producción servir la build del cliente
-if (process.env.NODE_ENV === 'production') {
+// En producción servir la build del cliente (solo si no es Vercel)
+if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
   app.use(express.static(path.join(__dirname, '../dist')));
   app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../dist/index.html'));
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor backend ejecutándose en:`);
-  console.log(`   - Local:   http://localhost:${PORT}`);
-  console.log(`   - Red WiFi: http://0.0.0.0:${PORT}`);
-});
+// Iniciar servidor local solo si no estamos en entorno Serverless (Vercel)
+if (!process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Servidor backend ejecutándose en:`);
+    console.log(`   - Local:   http://localhost:${PORT}`);
+    console.log(`   - Red WiFi: http://0.0.0.0:${PORT}`);
+  });
+}
+
+export default app;
